@@ -31,10 +31,22 @@
 //       const data = await response.json();
       
 //       if (response.ok) {
-//         // Parse the JSON string in the response
-//         const parsedAnalysis = typeof data.response === 'string' 
-//           ? JSON.parse(data.response) 
-//           : data.response;
+//         // Handle JSON potentially wrapped in markdown code blocks
+//         let responseText = data.response;
+        
+//         // Remove markdown code blocks if present
+//         if (typeof responseText === 'string' && responseText.includes('```')) {
+//           // Extract content between code blocks
+//           const matches = responseText.match(/```(?:json)?\s*([\s\S]*?)```/);
+//           if (matches && matches[1]) {
+//             responseText = matches[1];
+//           }
+//         }
+        
+//         // Parse the JSON string
+//         const parsedAnalysis = typeof responseText === 'string' 
+//           ? JSON.parse(responseText) 
+//           : responseText;
         
 //         setAnalysisData(parsedAnalysis);
 //         setActiveTab('games');
@@ -69,11 +81,34 @@
 //       const data = await response.json();
       
 //       if (response.ok) {
+//         // Handle SVG code
+//         let svgCode = data.svg_code;
+//         if (typeof svgCode === 'string' && svgCode.includes('```')) {
+//           // Extract content between code blocks if present
+//           const svgMatches = svgCode.match(/```(?:html|svg)?\s*([\s\S]*?)```/);
+//           if (svgMatches && svgMatches[1]) {
+//             svgCode = svgMatches[1];
+//           }
+//         }
+        
+//         // Handle instructions JSON potentially wrapped in markdown
+//         let instructionsText = data.instructions;
+//         if (typeof instructionsText === 'string' && instructionsText.includes('```')) {
+//           // Extract content between code blocks
+//           const matches = instructionsText.match(/```(?:json)?\s*([\s\S]*?)```/);
+//           if (matches && matches[1]) {
+//             instructionsText = matches[1];
+//           }
+//         }
+        
+//         // Parse the instructions JSON
+//         const parsedInstructions = typeof instructionsText === 'string' 
+//           ? JSON.parse(instructionsText) 
+//           : instructionsText;
+        
 //         setGameData({
-//           svg: data.svg_code,
-//           instructions: typeof data.instructions === 'string' 
-//             ? JSON.parse(data.instructions) 
-//             : data.instructions
+//           svg: svgCode,
+//           instructions: parsedInstructions
 //         });
 //         setActiveTab('play');
 //       } else {
@@ -308,7 +343,11 @@
 
 // export default App;
 
-import React, { useState } from 'react';
+
+
+
+
+import React, { useState, useRef, useEffect } from 'react';
 import { Play, Loader2, Book, Award, RotateCcw } from 'lucide-react';
 
 const App = () => {
@@ -319,6 +358,7 @@ const App = () => {
   const [gameData, setGameData] = useState(null);
   const [activeTab, setActiveTab] = useState('concept');
   const [error, setError] = useState('');
+  const gameContainerRef = useRef(null);
 
   const analyzeHandler = async () => {
     if (!concept.trim()) {
@@ -391,13 +431,13 @@ const App = () => {
       const data = await response.json();
       
       if (response.ok) {
-        // Handle SVG code
-        let svgCode = data.svg_code;
-        if (typeof svgCode === 'string' && svgCode.includes('```')) {
+        // Handle HTML code
+        let htmlCode = data.svg_code; // The backend still uses svg_code as the key name
+        if (typeof htmlCode === 'string' && htmlCode.includes('```')) {
           // Extract content between code blocks if present
-          const svgMatches = svgCode.match(/```(?:html|svg)?\s*([\s\S]*?)```/);
-          if (svgMatches && svgMatches[1]) {
-            svgCode = svgMatches[1];
+          const htmlMatches = htmlCode.match(/```(?:html)?\s*([\s\S]*?)```/);
+          if (htmlMatches && htmlMatches[1]) {
+            htmlCode = htmlMatches[1];
           }
         }
         
@@ -417,7 +457,7 @@ const App = () => {
           : instructionsText;
         
         setGameData({
-          svg: svgCode,
+          html: htmlCode,
           instructions: parsedInstructions
         });
         setActiveTab('play');
@@ -431,6 +471,36 @@ const App = () => {
       setLoading(false);
     }
   };
+
+  // Effect to handle HTML game initialization after rendering
+  useEffect(() => {
+    if (gameData && gameData.html && gameContainerRef.current && activeTab === 'play') {
+      // Clear previous content
+      gameContainerRef.current.innerHTML = '';
+      
+      // Create a container for the game that's isolated from the React app
+      const gameIframe = document.createElement('iframe');
+      gameIframe.style.width = '100%';
+      gameIframe.style.height = '500px';
+      gameIframe.style.border = 'none';
+      gameIframe.title = 'Learning Game';
+      gameIframe.sandbox = 'allow-scripts allow-popups allow-same-origin';
+      
+      // Append iframe to container
+      gameContainerRef.current.appendChild(gameIframe);
+      
+      // Wait for iframe to load, then write the HTML content to it
+      gameIframe.onload = () => {
+        const iframeDocument = gameIframe.contentDocument || gameIframe.contentWindow.document;
+        iframeDocument.open();
+        iframeDocument.write(gameData.html);
+        iframeDocument.close();
+      };
+      
+      // Trigger iframe load
+      gameIframe.src = 'about:blank';
+    }
+  }, [gameData, activeTab]);
 
   const resetAll = () => {
     setConcept('');
@@ -599,11 +669,11 @@ const App = () => {
                   {gameData.instructions.title || "Interactive Learning Game"}
                 </h2>
                 
-                <div className="border border-gray-200 rounded-lg bg-white p-4 flex justify-center">
-                  {/* SVG Game Container */}
+                <div className="border border-gray-200 rounded-lg bg-white p-4">
+                  {/* HTML Game Container - now using iframe for isolation */}
                   <div 
-                    className="w-full" 
-                    dangerouslySetInnerHTML={{ __html: gameData.svg }} 
+                    ref={gameContainerRef}
+                    className="w-full h-full"
                   />
                 </div>
               </div>
